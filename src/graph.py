@@ -26,7 +26,23 @@ from mock_data import BONS_DE_COMMANDE, FACTURES_DEJA_TRAITEES, FOURNISSEURS_REF
 MODEL_ID = "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
 REGION = "eu-west-3"
 
-model = ChatBedrockConverse(model=MODEL_ID, region_name=REGION, temperature=0)
+# Garde-fou : factures = texte non fiable (n'importe quel fournisseur peut en écrire
+# une). guardrail_config bloque les tentatives d'injection de prompt détectées en
+# entrée (filtre PROMPT_ATTACK, testé avec 3 attaques distinctes, voir
+# test_adversarial_injection*.py).
+GUARDRAIL_ID = "97j0cwpultuj"
+GUARDRAIL_VERSION = "1"
+
+model = ChatBedrockConverse(
+    model=MODEL_ID,
+    region_name=REGION,
+    temperature=0,
+    guardrail_config={
+        "guardrail_identifier": GUARDRAIL_ID,
+        "guardrail_version": GUARDRAIL_VERSION,
+        "trace": "enabled",
+    },
+)
 
 
 # --- Schémas structurés pour les sorties LLM ---
