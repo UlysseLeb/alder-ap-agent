@@ -80,7 +80,11 @@ Les 5 cas de test de Phase 0 ont été rejoués pour de vrai contre l'agent dép
 
 Propagé jusqu'à l'agent réellement déployé le même jour : `main.py` accepte désormais un payload `{"image_base64": ...}` en plus de `{"raw_text": ...}` / `{"human_decision": ...}`, redéployé et testé via `invoke_agent_runtime` avec les deux images générées (conforme et fournisseur non référencé) : extraction, routage et interruption/reprise fonctionnent à l'identique du chemin texte, directement sur AgentCore Runtime.
 
-Prochaine étape : guardrail + test adversarial (mis de côté au profit de l'extraction vision), ou retester la persistance sur un délai plus long (réserve de la Phase 1, test en cours au moment de cette note).
+**Phase 1 (réserve) : résultat négatif sur la persistance longue durée, le 2026-10-11.** Test lancé en parallèle du travail de Phase 3 : une facture à risque envoyée, attente de 17 minutes (au-delà du délai d'inactivité par défaut d'AgentCore Runtime, 900s/15min, trouvé dans la doc AWS), puis reprise. Résultat : `KeyError: 'raw_text'` dans les logs CloudWatch, l'agent est reparti de `START` avec un état vide au lieu de reprendre à `human_approval`, preuve que `/tmp/checkpoints.sqlite` n'avait pas survécu.
+
+Facteur confondant à noter honnêtement : l'agent a été redéployé (pour l'extraction vision) pendant la fenêtre d'attente de 17 minutes, donc impossible d'isoler si c'est le timeout d'inactivité naturel ou le redéploiement qui a provoqué le remplacement d'instance. Les deux produisent le même effet (nouvelle instance, `/tmp` vierge), donc la cause précise reste à isoler avec un test plus propre si besoin. Ce qui est en revanche confirmé sans ambiguïté : **`/tmp` ne survit pas à un changement d'instance**, qu'il soit causé par un timeout ou un déploiement. Pour un vrai cas d'usage où l'attente humaine peut durer des heures ou des jours, une persistance locale sur `/tmp` est donc insuffisante : il faudrait un stockage externe durable (EFS monté via `--session-storage-mount-path`/`--efs-mount-path`, vus dans les options de `agentcore create`, ou une base de données comme DynamoDB) pour que le pattern d'interruption humaine soit fiable en production.
+
+Prochaine étape : guardrail + test adversarial, ou brancher un stockage persistant externe pour le checkpointer avant de considérer la Phase 1 totalement close.
 
 ## Liens
 
