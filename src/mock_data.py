@@ -71,3 +71,16 @@ SEUIL_MONTANT_ELEVE = 1500.0
 
 # Numéros de bons de commande déjà rattachés à une facture traitée (pour détecter les doublons).
 FACTURES_DEJA_TRAITEES = {"BC-2026-0915"}
+
+# Mapping fournisseur -> supplier_id côté Pennylane (fictif, pour simuler l'API).
+PENNYLANE_SUPPLIER_IDS = {
+    "Boucherie Fontaine": 98001,
+    "Marée Express": 98002,
+    "Primeur du Marais": 98003,
+    "Brasseries Distrib": 98004,
+    "Poissonnerie du Lac": 98005,
+    "Primeur Rhône": 98006,
+}
+
+# Compte comptable générique "achats de marchandises" côté Pennylane (fictif).
+PENNYLANE_LEDGER_ACCOUNT_ID = 601002

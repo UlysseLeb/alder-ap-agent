@@ -22,6 +22,7 @@ from langgraph.types import Command, interrupt
 from pydantic import BaseModel, Field
 
 from mock_data import BONS_DE_COMMANDE, FACTURES_DEJA_TRAITEES, FOURNISSEURS_REFERENCES, SEUIL_MONTANT_ELEVE
+from pennylane_client import pousser_facture_approuvee
 
 MODEL_ID = "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
 REGION = "eu-west-3"
@@ -80,6 +81,7 @@ class InvoiceState(TypedDict):
     justification_risque: Optional[str]
     decision_finale: Optional[str]
     commentaire_humain: Optional[str]
+    pennylane_invoice_id: Optional[int]
 
 
 # --- Nœuds ---
@@ -211,10 +213,26 @@ def human_approval(state: InvoiceState) -> dict:
     }
 
 
+def push_to_pennylane(state: InvoiceState) -> dict:
+    # Seules les factures approuvées (auto ou humaine) partent en compta.
+    # Une facture rejetée n'a rien à faire dans Pennylane.
+    if "approuvée" not in state["decision_finale"]:
+        return {}
+    extraction = FactureExtraite(**state["extraction"])
+    id_facture = pousser_facture_approuvee(
+        fournisseur=extraction.fournisseur,
+        montant_total=extraction.montant_total,
+        numero_bon_commande=extraction.numero_bon_commande,
+    )
+    return {"pennylane_invoice_id": id_facture}
+
+
 def notify(state: InvoiceState) -> dict:
+    pennylane_id = state.get("pennylane_invoice_id")
+    suffixe = f" | Pennylane #{pennylane_id}" if pennylane_id else ""
     print(
         f"[notify] {state['extraction']['numero_bon_commande']} — "
-        f"{state['decision_finale']} (risque: {state['risque']})"
+        f"{state['decision_finale']} (risque: {state['risque']}){suffixe}"
     )
     return {}
 
@@ -227,14 +245,16 @@ builder.add_node("validate_po", validate_po)
 builder.add_node("score_risk", score_risk)
 builder.add_node("auto_approve", auto_approve)
 builder.add_node("human_approval", human_approval)
+builder.add_node("push_to_pennylane", push_to_pennylane)
 builder.add_node("notify", notify)
 
 builder.add_edge(START, "extract_invoice")
 builder.add_edge("extract_invoice", "validate_po")
 builder.add_edge("validate_po", "score_risk")
 builder.add_conditional_edges("score_risk", route_risk, ["auto_approve", "human_approval"])
-builder.add_edge("auto_approve", "notify")
-builder.add_edge("human_approval", "notify")
+builder.add_edge("auto_approve", "push_to_pennylane")
+builder.add_edge("human_approval", "push_to_pennylane")
+builder.add_edge("push_to_pennylane", "notify")
 builder.add_edge("notify", END)
 
 graph = builder.compile(checkpointer=checkpointer)

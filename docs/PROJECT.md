@@ -106,6 +106,10 @@ Détail d'implémentation à noter : la fonctionnalité "Credential" native d'Ag
 
 Testé sur l'agent réellement déployé : facture à risque envoyée, message Slack reçu dans le canal dédié avec le bon format.
 
+**Deuxième brique : intégration comptable (Pennylane), simulée.** Pennylane confirmé comme l'outil comptable français dominant, avec une vraie API publique (fournisseurs/factures en lecture-écriture). Mais contrairement à Slack, pas d'accès développeur instantané : un sandbox nécessite soit un vrai compte client payant, soit une demande partenaire (`integrations@pennylane.com`), pas réalisable ce soir. Plutôt que de laisser ça en l'air, simulation locale du vrai schéma de l'API (`POST /api/external/v2/supplier_invoices/import`, vérifié sur la vraie doc Pennylane, pas deviné) : `src/pennylane_mock_server.py` (FastAPI, imite les deux endpoints nécessaires : upload de pièce jointe puis import de facture, avec vérification d'un Bearer token) et `src/pennylane_client.py` (appelle ces endpoints avec le vrai format JSON attendu).
+
+Nouveau nœud `push_to_pennylane` ajouté au graphe, entre la décision (`auto_approve`/`human_approval`) et `notify` : pousse la facture vers Pennylane uniquement si la décision finale est une approbation, jamais pour une facture rejetée. Testé sur les 5 cas de `run_tests.py` : les 3 cas approuvés reçoivent un id Pennylane simulé, les 2 cas rejetés n'envoient rien, comportement métier correct. Reste en local uniquement : un service qui tourne sur `localhost` ne serait pas accessible depuis l'agent déployé dans le cloud sans tunnel exposé, donc pas propagé à AgentCore (contrairement à Slack).
+
 ## Liens
 
 - Projet précédent, origine de la recherche marché qui a motivé ce projet : [[novasupply-agent]] (`~/Desktop/CODE/freelance-clients/novasupply-agent/`), resté sur Strands/Lambda/CDK.
