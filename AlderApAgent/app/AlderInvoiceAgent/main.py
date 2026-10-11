@@ -12,12 +12,22 @@ LangchainInstrumentor().instrument()
 app = BedrockAgentCoreApp()
 log = app.logger
 
-# Checkpointer durable (validé en local : survit à un redémarrage complet du
-# process, cf. test_persistence_part1/2.py). Sur AgentCore Runtime (build
-# CodeZip), le répertoire de code est en lecture seule : seul /tmp est
-# inscriptible. Reste à vérifier si /tmp survit entre deux appels distincts
-# (deux instances différentes) ou seulement au sein d'une même instance chaude.
-_conn = sqlite3.connect("/tmp/checkpoints.sqlite", check_same_thread=False)
+# Checkpointer durable. /tmp a été testé et confirmé NON durable : perdu dès
+# qu'une nouvelle instance remplace l'ancienne (testé le 2026-10-11, voir
+# docs/PROJECT.md). Remplacé par un stockage de session géré par AgentCore
+# (filesystemConfigurations.sessionStorage dans agentcore.json), monté sur
+# /mnt/session-storage. Ce montage est un système de fichiers réseau (type
+# NFS) : le verrouillage de fichier POSIX classique de SQLite y échoue
+# ("database is locked" dès la création, testé le 2026-10-11). "nolock=1"
+# désactive ce verrouillage (documenté par SQLite pour ce cas précis :
+# https://www.sqlite.org/uri.html). Acceptable ici : un seul écrivain actif
+# par session, pas de vraie concurrence sur un même thread_id.
+_conn = sqlite3.connect(
+    "file:/mnt/session-storage/checkpoints.sqlite?nolock=1",
+    uri=True,
+    check_same_thread=False,
+    timeout=30,
+)
 _checkpointer = SqliteSaver(_conn)
 graph = builder.compile(checkpointer=_checkpointer)
 

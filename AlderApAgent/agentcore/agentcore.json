@@ -15,7 +15,14 @@
       "codeLocation": "app/AlderInvoiceAgent/",
       "runtimeVersion": "PYTHON_3_14",
       "networkMode": "PUBLIC",
-      "protocol": "HTTP"
+      "protocol": "HTTP",
+      "filesystemConfigurations": [
+        {
+          "sessionStorage": {
+            "mountPath": "/mnt/session-storage"
+          }
+        }
+      ]
     }
   ],
   "memories": [],
