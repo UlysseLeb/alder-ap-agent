@@ -94,7 +94,17 @@ Point honnête à retenir, découvert en vérifiant la trace du guardrail sur no
 
 Propagé à l'agent réellement déployé le même jour (`model/load.py`). Détail d'infra découvert au passage : le rôle d'exécution IAM de l'agent (différent de notre utilisateur IAM local) n'avait pas la permission `bedrock:ApplyGuardrail`, ajoutée manuellement sur la ressource du guardrail précisément. Testé sur le vrai agent déployé : facture normale toujours approuvée automatiquement (pas de régression), facture avec injection toujours correctement interrompue pour validation humaine, cohérent avec les résultats locaux.
 
-Les trois phases de la roadmap initiale sont maintenant complètes (Phase 0, 1, 2, 3), avec une réserve de Phase 1 explicitement testée et refermée dans la journée.
+Les quatre phases de la roadmap initiale sont maintenant complètes (Phase 0, 1, 2, 3), avec une réserve de Phase 1 explicitement testée et refermée dans la journée.
+
+## Au-delà de la roadmap initiale : première brique de productionisation (2026-10-11)
+
+Jusqu'ici, l'agent renvoyait juste `"status": "pending_human_approval"` dans la réponse API : personne n'était activement prévenu. Première brique de "vrai produit" ajoutée : une alerte Slack réelle quand l'agent s'interrompt.
+
+Mise en place : app Slack créée (webhook entrant), URL stockée dans AWS Secrets Manager (`alder-ap-agent/slack-webhook-url`), jamais en dur dans le code. Permission `secretsmanager:GetSecretValue` ajoutée au rôle d'exécution, scopée précisément à ce secret. `main.py` poste un message formaté (fournisseur, montant, écarts, justification) sur le webhook dès qu'une facture s'interrompt, via `urllib.request` (stdlib, pas de dépendance ajoutée), avec un `try/except` qui log l'échec sans jamais faire planter la validation de la facture elle même si Slack est indisponible.
+
+Détail d'implémentation à noter : la fonctionnalité "Credential" native d'AgentCore (`agentcore add credential`) n'était pas adaptée à cet usage (plutôt pensée pour l'authentification sortante via Gateway) ; AWS Secrets Manager, plus standard, a été préféré.
+
+Testé sur l'agent réellement déployé : facture à risque envoyée, message Slack reçu dans le canal dédié avec le bon format.
 
 ## Liens
 

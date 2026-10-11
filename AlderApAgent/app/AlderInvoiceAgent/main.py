@@ -1,5 +1,8 @@
+import json
 import sqlite3
+import urllib.request
 
+import boto3
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import Command
 from opentelemetry.instrumentation.langchain import LangchainInstrumentor
@@ -11,6 +14,36 @@ LangchainInstrumentor().instrument()
 
 app = BedrockAgentCoreApp()
 log = app.logger
+
+# URL du webhook Slack lue depuis Secrets Manager au démarrage, jamais en dur
+# dans le code (secret partagé = n'importe qui avec l'URL peut poster dans
+# le canal). Le rôle d'exécution a la permission secretsmanager:GetSecretValue
+# scopée précisément à ce secret.
+_secrets = boto3.client("secretsmanager", region_name="eu-west-3")
+SLACK_WEBHOOK_URL = _secrets.get_secret_value(
+    SecretId="alder-ap-agent/slack-webhook-url"
+)["SecretString"]
+
+
+def _notifier_slack(question: dict) -> None:
+    message = (
+        f":warning: *Facture à risque élevé, validation requise*\n"
+        f"*Fournisseur :* {question['fournisseur']}\n"
+        f"*Restaurant :* {question['restaurant']}\n"
+        f"*Montant :* {question['montant_total']}€\n"
+        f"*Écarts :* {', '.join(question['ecarts'])}\n"
+        f"*Justification :* {question['justification_risque']}"
+    )
+    body = json.dumps({"text": message}).encode()
+    req = urllib.request.Request(
+        SLACK_WEBHOOK_URL, data=body, headers={"Content-Type": "application/json"}
+    )
+    try:
+        urllib.request.urlopen(req, timeout=5)
+    except Exception as e:
+        # Une alerte Slack ratée ne doit jamais faire planter la validation
+        # de la facture elle même : log et on continue.
+        log.error(f"Échec de l'envoi de l'alerte Slack : {e}")
 
 # Checkpointer durable. /tmp a été testé et confirmé NON durable : perdu dès
 # qu'une nouvelle instance remplace l'ancienne (testé le 2026-10-11, voir
@@ -49,6 +82,7 @@ async def invoke(payload, context):
 
     if "__interrupt__" in result:
         interruption = result["__interrupt__"][0]
+        _notifier_slack(interruption.value)
         return {"status": "pending_human_approval", "question": interruption.value}
 
     return {
