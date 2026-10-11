@@ -11,15 +11,15 @@ NovaSupply Ops Agent a validé la compétence "agent qui choisit ses outils" (St
 
 ## Scénario
 
-**Alder Freight**, une entreprise de transport routier fictive, reçoit des factures fournisseurs (carburant, maintenance de flotte, péages) qu'il faut valider avant paiement. Le processus métier type :
+**Alder Kitchens**, une chaîne de restaurants fictive, reçoit des factures de ses fournisseurs alimentaires (viande, poisson, légumes, boissons) qu'il faut valider avant paiement, restaurant par restaurant. Le processus métier type :
 
 1. Une facture arrive (email, PDF, ou texte libre pour le prototype).
-2. Il faut en extraire les données structurées (fournisseur, montant, numéro de bon de commande, lignes).
-3. Comparer au bon de commande correspondant (quantités/montants attendus).
-4. Évaluer le risque : montant au-dessus d'un seuil, fournisseur inconnu, écart avec le bon de commande, facture en double.
-5. Si risque faible → approbation automatique. Si risque élevé → **le graphe s'arrête et attend une décision humaine** avant de continuer.
+2. Il faut en extraire les données structurées (fournisseur, montant, numéro de bon de commande, lignes avec quantités et prix au kg/litre/unité).
+3. Comparer au bon de commande hebdomadaire correspondant (quantités/prix attendus).
+4. Évaluer le risque : montant au-dessus d'un seuil, fournisseur non référencé pour ce restaurant, écart de quantité livrée vs commandée, prix au kg/litre qui dérive anormalement par rapport au bon de commande (saisonnalité des produits frais), facture en double.
+5. Si risque faible → approbation automatique. Si risque élevé → **le graphe s'arrête et attend une décision humaine** (le responsable du restaurant ou le contrôle de gestion) avant de continuer.
 
-C'est un vrai cas d'automatisation de comptabilité fournisseurs (AP automation), reconnaissable par n'importe quel recruteur, et qui a une structure naturellement multi-étapes/multi-agents plutôt qu'un simple choix d'outil — contrairement à NovaSupply où un seul agent avec 3 outils suffisait.
+C'est un vrai cas d'automatisation de comptabilité fournisseurs (AP automation), reconnaissable par n'importe quel recruteur, et qui a une structure naturellement multi-étapes/multi-agents plutôt qu'un simple choix d'outil — contrairement à NovaSupply où un seul agent avec 3 outils suffisait. Le secteur restauration a aussi l'avantage d'écarts de prix fréquents et légitimes (saisonnalité, cours des matières premières), ce qui rend le scoring de risque moins binaire qu'un simple contrôle de conformité — bon terrain pour tester la décision de l'agent à interrompre ou non.
 
 ## Architecture du graphe (LangGraph)
 
@@ -60,7 +60,13 @@ Utiliser les fonctionnalités Observability/Evaluations d'AgentCore plutôt que 
 
 ## Statut
 
-Scaffold créé le 2026-10-04. Rien codé encore. Prochaine étape : Phase 0, premier jet du graphe LangGraph en local.
+**Phase 0 : premier jet terminé le 2026-10-04.** Graphe LangGraph fonctionnel en local (`src/graph.py`) : `extract_invoice` (LLM, extraction structurée via Pydantic) → `validate_po` (comparaison déterministe au bon de commande mocké, pas de LLM — comparer des quantités/prix est un calcul exact, pas un jugement) → `score_risk` (LLM, jugement nuancé sur les écarts) → routage conditionnel `auto_approve` / `human_approval` (`interrupt()`) → `notify`. Checkpointer `InMemorySaver`. 5 cas de test validés dans `src/run_tests.py` : risque faible (conforme), fournisseur non référencé, écart quantité + prix, facture en double, montant au-dessus du seuil malgré conformité — l'interruption humaine se déclenche correctement sur les 4 cas à risque et reprend l'exécution avec `Command(resume=...)`. Modèle : `eu.anthropic.claude-haiku-4-5-20251001-v1:0` via Bedrock (région eu-west-3), même choix que NovaSupply.
+
+Point corrigé en cours de route : stocker l'extraction LLM comme objet Pydantic brut dans le state du graphe déclenchait un warning de dépréciation du checkpointer (sérialisation msgpack d'un type non enregistré). Corrigé en stockant un dict (`model_dump()`) dans le state et en reconstruisant l'objet Pydantic localement dans chaque nœud qui en a besoin.
+
+**Phase 1 : persistance durable validée le 2026-10-11.** Remplacement du checkpointer `InMemorySaver` par `SqliteSaver` (package `langgraph-checkpoint-sqlite`), avec une connexion sqlite ouverte au niveau du module plutôt que via le context manager `from_conn_string(...)` par défaut (celui-ci referme la connexion dès la sortie du bloc `with`, ce qui aurait cassé toute invocation ultérieure). Hypothèse testée explicitement avec `test_persistence_part1.py` et `test_persistence_part2.py` : un premier process Python déclenche une interruption puis se termine complètement, un second process, totalement indépendant, reprend l'exécution depuis le fichier `checkpoints.sqlite` sur disque jusqu'à la décision finale. Confirme que l'état survit à un redémarrage complet du programme, condition nécessaire avant un déploiement sur une Lambda ou AgentCore Runtime qui ne garde rien en mémoire entre deux invocations.
+
+Prochaine étape : packager le graphe pour AgentCore Runtime (le reste de la Phase 1).
 
 ## Liens
 
