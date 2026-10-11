@@ -1,0 +1,13 @@
+# Secrets (local environment files are never committed)
+.env.local
+
+# CDK Build Artifacts
+cdk/cdk.out/
+cdk/node_modules/
+
+# CLI Internals (contient l'ID de compte AWS réel dans deployed-state.json,
+# volontairement non commité malgré l'exception par défaut du scaffold)
+.cli/*
+
+# Ephemeral Staging
+.cache/*

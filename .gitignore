@@ -1,8 +1,10 @@
 .env
+.env.local
 venv/
 .venv/
 __pycache__/
 *.pyc
 cdk.out/
+node_modules/
 .DS_Store
 *.sqlite
