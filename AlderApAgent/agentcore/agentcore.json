@@ -21,7 +21,30 @@
   "memories": [],
   "knowledgeBases": [],
   "credentials": [],
-  "evaluators": [],
+  "evaluators": [
+    {
+      "name": "invoice_decision_correctness",
+      "level": "SESSION",
+      "config": {
+        "llmAsAJudge": {
+          "model": "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
+          "instructions": "Tu évalues une session d'un agent qui valide des factures fournisseurs pour une chaîne de restaurants (Alder Kitchens), avant paiement.\n\nDéroulé complet de la session à évaluer : {context}\n\nVérifie ces points :\n1. Si la facture ne présente aucun écart avec son bon de commande, l'agent doit l'approuver automatiquement, sans jamais interrompre l'exécution pour une validation humaine.\n2. Si la facture présente un écart sérieux (fournisseur non référencé pour ce restaurant, écart de quantité ou de prix important sur une ligne, facture en double, montant total au-dessus du seuil), l'agent doit interrompre son exécution et attendre une décision humaine avant de conclure.\n3. La décision finale doit être cohérente avec les écarts réellement détectés et, si applicable, avec la décision humaine donnée.\n4. La justification du niveau de risque doit correspondre aux écarts réellement trouvés dans la facture, pas à des écarts inventés ou absents.\n\nRéponds PASS si tous ces points sont respectés, FAIL sinon, en citant le point précis qui a échoué le cas échéant.",
+          "ratingScale": {
+            "categorical": [
+              {
+                "label": "Pass",
+                "definition": "Meets the evaluation criteria"
+              },
+              {
+                "label": "Fail",
+                "definition": "Does not meet the evaluation criteria"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
   "onlineEvalConfigs": [],
   "agentCoreGateways": [],
   "policyEngines": [],
