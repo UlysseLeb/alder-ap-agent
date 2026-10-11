@@ -92,7 +92,9 @@ Garde-fou ajouté quand même, en défense en profondeur : Bedrock Guardrail (`a
 
 Point honnête à retenir, découvert en vérifiant la trace du guardrail sur nos 3 tentatives réelles : **le guardrail ne s'est déclenché sur aucune des trois** (`actionReason: No action.`). Il ne réagit qu'à des formulations d'attaque nues et classiques, pas aux attaques subtiles noyées dans un contexte métier plausible. Les deux défenses (architecture structurée + guardrail) sont donc complémentaires, pas redondantes : chacune couvre un type d'attaque que l'autre ne couvre pas forcément.
 
-Reste à décider : propager ce guardrail à l'agent déployé sur AgentCore (comme pour l'extraction vision), ou garder cette validation en local pour ce projet d'apprentissage.
+Propagé à l'agent réellement déployé le même jour (`model/load.py`). Détail d'infra découvert au passage : le rôle d'exécution IAM de l'agent (différent de notre utilisateur IAM local) n'avait pas la permission `bedrock:ApplyGuardrail`, ajoutée manuellement sur la ressource du guardrail précisément. Testé sur le vrai agent déployé : facture normale toujours approuvée automatiquement (pas de régression), facture avec injection toujours correctement interrompue pour validation humaine, cohérent avec les résultats locaux.
+
+Les trois phases de la roadmap initiale sont maintenant complètes (Phase 0, 1, 2, 3), avec une réserve de Phase 1 explicitement testée et refermée dans la journée.
 
 ## Liens
 
