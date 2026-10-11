@@ -11,6 +11,7 @@ des prix à un bon de commande est un calcul exact, pas un jugement, donc pas d�
 from typing import Literal, Optional, TypedDict
 
 from langchain_aws import ChatBedrockConverse
+from langchain_core.messages import HumanMessage
 import sqlite3
 from langgraph.checkpoint.sqlite import SqliteSaver
 
@@ -55,7 +56,8 @@ class EvaluationRisque(BaseModel):
 
 
 class InvoiceState(TypedDict):
-    raw_text: str
+    raw_text: Optional[str]  # texte libre (ex: email) — exclusif avec image_base64
+    image_base64: Optional[str]  # image de la facture (PNG/JPEG) encodée en base64 — exclusif avec raw_text
     extraction: Optional[dict]  # dict (pas FactureExtraite) : le checkpointer sérialise le state en msgpack
     ecarts: list[str]
     risque: Optional[str]
@@ -68,12 +70,27 @@ class InvoiceState(TypedDict):
 
 
 def extract_invoice(state: InvoiceState) -> dict:
-    llm = model.with_structured_output(FactureExtraite)
-    extraction: FactureExtraite = llm.invoke(
+    consigne = (
         "Extrait les données structurées de cette facture fournisseur. "
-        "Le numéro de bon de commande est toujours au format BC-AAAA-NNNN.\n\n"
-        f"Facture :\n{state['raw_text']}"
+        "Le numéro de bon de commande est toujours au format BC-AAAA-NNNN."
     )
+    if state.get("image_base64"):
+        # Vraie facture (image), lue par vision plutôt que du texte tapé à la main.
+        message = HumanMessage(
+            content=[
+                {"type": "text", "text": consigne},
+                {
+                    "type": "image",
+                    "source": {"type": "base64", "media_type": "image/png", "data": state["image_base64"]},
+                },
+            ]
+        )
+        entree = [message]
+    else:
+        entree = f"{consigne}\n\nFacture :\n{state['raw_text']}"
+
+    llm = model.with_structured_output(FactureExtraite)
+    extraction: FactureExtraite = llm.invoke(entree)
     return {"extraction": extraction.model_dump()}
 
 

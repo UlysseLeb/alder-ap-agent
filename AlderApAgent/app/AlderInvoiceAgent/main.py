@@ -30,6 +30,9 @@ async def invoke(payload, context):
     if "human_decision" in payload:
         log.info(f"Reprise de la session {thread_id} avec une décision humaine")
         result = graph.invoke(Command(resume=payload["human_decision"]), config=config)
+    elif "image_base64" in payload:
+        log.info(f"Nouvelle facture (image) pour la session {thread_id}")
+        result = graph.invoke({"image_base64": payload["image_base64"]}, config=config)
     else:
         log.info(f"Nouvelle facture pour la session {thread_id}")
         result = graph.invoke({"raw_text": payload["raw_text"]}, config=config)
