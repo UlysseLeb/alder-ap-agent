@@ -21,7 +21,7 @@ A 6-node [LangGraph](https://github.com/langchain-ai/langgraph) graph:
 | `validate_po` | deterministic | Compares the extraction to the purchase order: supplier on file, quantity/price discrepancies, duplicate, amount above threshold |
 | `score_risk` | LLM | Judges the severity of the raw discrepancies: a price gap alone isn't necessarily serious, but combined with another signal it often is |
 | `auto_approve` / `human_approval` | conditional routing | Low risk → automatic approval. High risk → the graph **pauses** (`interrupt()`) and waits for a human decision |
-| `notify` | deterministic | Records the final decision |
+| `notify` | deterministic | Records the final decision (prints it, and appends it to an audit trail, see below) |
 
 ```mermaid
 graph TD
@@ -52,15 +52,44 @@ graph TD
 
 When execution resumes after an interruption, it picks up exactly where it left off (LangGraph checkpointer, indexed by `thread_id`), not a fresh run from scratch.
 
+## Audit trail
+
+Every invoice processed by `notify` appends one line to `audit_log.jsonl`, append-only, never rewritten. Real record from the tomato case above:
+
+```json
+{
+  "timestamp": "2026-10-20T05:14:23.735811+00:00",
+  "po_number": "BC-2026-0920",
+  "supplier": "Primeur Rhône",
+  "restaurant": "Alder Kitchens - Lyon Part-Dieu",
+  "total_amount": 247.5,
+  "discrepancies": [
+    "Quantity discrepancy on 'Tomates grappe': 45.0 kg invoiced vs 30 kg ordered.",
+    "Price discrepancy on 'Tomates grappe': €4.8/kg invoiced vs €3.2/kg on the purchase order."
+  ],
+  "risk": "high",
+  "risk_rationale": "Significant quantity discrepancy (50% surplus: 45 kg vs 30 kg ordered) combined with a 50% price increase (€4.8/kg vs €3.2/kg). While price discrepancies alone can be legitimate, a large quantity discrepancy combined with a high price discrepancy on the same product is a serious signal that warrants a check before payment.",
+  "final_decision": "approved by human validation",
+  "human_comment": "Price increase confirmed by the supplier (tomato shortage), extra quantity needed for the weekend event.",
+  "pennylane_invoice_id": 2
+}
+```
+
+Field names are translated here for readability; the actual file is written in French, like the rest of the codebase's comments and docstrings.
+
 ## Stack
 
 Python · [LangGraph](https://github.com/langchain-ai/langgraph) (orchestration, state, interrupt/resume) · [langchain-aws](https://github.com/langchain-ai/langchain-aws) (`ChatBedrockConverse`) · Amazon Bedrock (Claude Haiku 4.5) · AWS Bedrock AgentCore (Runtime, Gateway, deployment in progress)
 
+## Evals
+
+`src/evals.py` checks by assertion what the graph actually produced for each case (risk level, final decision, audit record), not a human reading printed text. 6/6 cases pass, including a regression case that replays a prompt injection smuggled into the supplier's name (see `test_adversarial_injection_v3.py` for the original, narrated version of that attack).
+
 ## Status
 
-- **Phase 0**: local LangGraph graph, conditional routing and human interruption validated on 5 test cases (compliant, unlisted supplier, quantity/price discrepancy, duplicate, amount above threshold). ✅
+- **Phase 0**: local LangGraph graph, conditional routing and human interruption validated on 6 test cases (compliant, unlisted supplier, quantity/price discrepancy, duplicate, amount above threshold, adversarial injection), plus an assertion-based eval suite and an append-only audit trail. ✅
 - **Phase 1**: AgentCore deployment, replacing the in-memory checkpointer with durable persistence, then packaging for AgentCore Runtime. In progress.
-- **Phase 2**: AgentCore's native Observability & Evaluations, instead of a homemade traces table and eval suite.
+- **Phase 2**: AgentCore's native Observability & Evaluations, instead of the homemade traces file and eval suite above.
 - **Phase 3**: to be defined based on what's still missing after the first three phases.
 
 Follow-up to [novasupply-agent](https://github.com/UlysseLeb/novasupply-agent), where the agent decided on its own (no human validation step) on a different AWS stack (Strands, Lambda, CDK).

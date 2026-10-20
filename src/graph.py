@@ -8,6 +8,9 @@ frais par exemple). validate_po est un calcul déterministe : comparer des quant
 des prix à un bon de commande est un calcul exact, pas un jugement, donc pas délégué au LLM.
 """
 
+import json
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Literal, Optional, TypedDict
 
 from dotenv import load_dotenv
@@ -30,6 +33,10 @@ from pennylane_client import pousser_facture_approuvee
 
 MODEL_ID = "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
 REGION = "eu-west-3"
+
+# Piste d'audit : un enregistrement append-only par facture traitée, jamais réécrit.
+# Fichier local en Phase 0 (voir .gitignore) ; deviendra une vraie table en Phase 1.
+AUDIT_LOG_PATH = Path(__file__).resolve().parent / "audit_log.jsonl"
 
 # Garde-fou : factures = texte non fiable (n'importe quel fournisseur peut en écrire
 # une). guardrail_config bloque les tentatives d'injection de prompt détectées en
@@ -238,7 +245,30 @@ def notify(state: InvoiceState) -> dict:
         f"[notify] {state['extraction']['numero_bon_commande']} — "
         f"{state['decision_finale']} (risque: {state['risque']}){suffixe}"
     )
+    _enregistrer_piste_audit(state, pennylane_id)
     return {}
+
+
+def _enregistrer_piste_audit(state: InvoiceState, pennylane_id: Optional[int]) -> None:
+    """Ajoute une ligne à audit_log.jsonl : la trace de la décision prise par l'agent sur
+    cette facture, indépendante du print (lisible par un humain) et du log applicatif —
+    pensée pour être relue plus tard, pas seulement observée en direct."""
+    extraction = state["extraction"]
+    enregistrement = {
+        "horodatage": datetime.now(timezone.utc).isoformat(),
+        "numero_bon_commande": extraction["numero_bon_commande"],
+        "fournisseur": extraction["fournisseur"],
+        "restaurant": extraction["restaurant"],
+        "montant_total": extraction["montant_total"],
+        "ecarts": state["ecarts"],
+        "risque": state["risque"],
+        "justification_risque": state["justification_risque"],
+        "decision_finale": state["decision_finale"],
+        "commentaire_humain": state.get("commentaire_humain"),
+        "pennylane_invoice_id": pennylane_id,
+    }
+    with AUDIT_LOG_PATH.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(enregistrement, ensure_ascii=False) + "\n")
 
 
 # --- Construction du graphe ---

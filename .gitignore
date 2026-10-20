@@ -8,3 +8,4 @@ cdk.out/
 node_modules/
 .DS_Store
 *.sqlite
+audit_log.jsonl
