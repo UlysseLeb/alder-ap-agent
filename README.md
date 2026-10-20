@@ -1,65 +1,66 @@
 # Alder AP Agent
 
-Un agent qui valide les factures fournisseurs d'une chaîne de restaurants avant paiement, et s'arrête pour demander une validation humaine sur les cas à risque, plutôt que de tout auto-approuver ou de tout bloquer pour une review manuelle intégrale.
+An agent that validates a restaurant chain's supplier invoices before payment, and pauses to ask for human approval on risky cases, instead of either auto-approving everything or sending every invoice through full manual review.
 
-## Le problème
+## The problem
 
-**Alder Kitchens**, une chaîne de restaurants, reçoit chaque semaine des factures de ses fournisseurs alimentaires (viande, poisson, légumes, boissons) à comparer à un bon de commande avant paiement. Deux approches naïves échouent :
+**Alder Kitchens**, a restaurant chain, receives weekly invoices from its food suppliers (meat, fish, vegetables, drinks) to check against a purchase order before payment. Two naive approaches fail:
 
-- **Tout auto-approuver** : un fournisseur non référencé, une facture en double, ou un montant anormal passent sans contrôle.
-- **Tout faire relire par un humain** : la plupart des factures sont conformes, et noyer les vrais cas à risque dans un flux de review systématique les rend plus faciles à rater.
+- **Auto-approve everything**: an unlisted supplier, a duplicate invoice, or an abnormal amount go through unchecked.
+- **Send everything to a human**: most invoices are compliant, and burying the real risky cases inside a systematic review queue makes them easier to miss.
 
-Le secteur ajoute une difficulté : un écart de prix sur un produit frais (saisonnalité, cours des matières premières) peut être parfaitement légitime. Le risque n'est pas binaire : un seuil fixe ne suffit pas, il faut un jugement.
+The industry adds a complication: a price discrepancy on a fresh product (seasonality, raw material prices) can be perfectly legitimate. Risk isn't binary: a fixed threshold isn't enough, it needs judgment.
 
-## Ce que fait l'agent
+## What the agent does
 
-Un graphe [LangGraph](https://github.com/langchain-ai/langgraph) à 6 nœuds :
+A 6-node [LangGraph](https://github.com/langchain-ai/langgraph) graph:
 
-| Nœud | Type | Rôle |
+| Node | Type | Role |
 |---|---|---|
-| `extract_invoice` | LLM | Extrait les données structurées d'une facture en texte libre (fournisseur, bon de commande, lignes, montant) |
-| `validate_po` | déterministe | Compare l'extraction au bon de commande : fournisseur référencé, écarts de quantité/prix, doublon, montant au-dessus du seuil |
-| `score_risk` | LLM | Juge la gravité des écarts bruts : un écart de prix seul n'est pas forcément grave, la combinaison de plusieurs signaux l'est davantage |
-| `auto_approve` / `human_approval` | routage conditionnel | Risque faible → approbation automatique. Risque élevé → le graphe **s'interrompt** (`interrupt()`) et attend une décision humaine |
-| `notify` | déterministe | Enregistre la décision finale |
+| `extract_invoice` | LLM | Extracts structured data from a free-text invoice (supplier, purchase order, line items, amount) |
+| `validate_po` | deterministic | Compares the extraction to the purchase order: supplier on file, quantity/price discrepancies, duplicate, amount above threshold |
+| `score_risk` | LLM | Judges the severity of the raw discrepancies: a price gap alone isn't necessarily serious, but combined with another signal it often is |
+| `auto_approve` / `human_approval` | conditional routing | Low risk → automatic approval. High risk → the graph **pauses** (`interrupt()`) and waits for a human decision |
+| `notify` | deterministic | Records the final decision |
 
 ```mermaid
 graph TD
     START(("START")) --> EI["extract_invoice"]
     EI --> VP["validate_po"]
     VP --> SR["score_risk"]
-    SR -- risque faible --> AA["auto_approve"]
-    SR -- risque élevé --> HA["human_approval"]
+    SR -- low risk --> AA["auto_approve"]
+    SR -- high risk --> HA["human_approval"]
     AA --> N["notify"]
     HA --> N
     N --> END(("END"))
 ```
 
-## Exemple réel
+## Real example
 
 ```
-→ Facture Primeur Rhône, 45 kg de tomates à 4,80€/kg
-  (bon de commande : 30 kg à 3,20€/kg)
+→ Invoice from Primeur Rhône, 45 kg of tomatoes at €4.80/kg
+  (purchase order: 30 kg at €3.20/kg)
 
-← validate_po détecte un écart de quantité (+50%) ET de prix (+50%)
-  score_risk : "chaque écart seul pourrait être légitime, mais la
-  combinaison des deux est un signal sérieux" → risque élevé
-  → le graphe s'interrompt, attend la décision humaine
-  → approuvée : "hausse de prix confirmée par le fournisseur (pénurie
-  tomates), quantité en plus voulue pour l'événement du week-end"
+← validate_po detects both a quantity discrepancy (+50%) AND a price
+  discrepancy (+50%)
+  score_risk: "either discrepancy alone could be legitimate, but the
+  combination of both is a serious signal" → high risk
+  → the graph pauses, waiting for a human decision
+  → approved: "price increase confirmed by the supplier (tomato
+  shortage), extra quantity needed for the weekend event"
 ```
 
-Les cas où l'exécution reprend après interruption retrouvent l'état exact où elle s'était arrêtée (checkpointer LangGraph, indexé par `thread_id`), pas une nouvelle exécution depuis zéro.
+When execution resumes after an interruption, it picks up exactly where it left off (LangGraph checkpointer, indexed by `thread_id`), not a fresh run from scratch.
 
 ## Stack
 
-Python · [LangGraph](https://github.com/langchain-ai/langgraph) (orchestration, state, interrupt/resume) · [langchain-aws](https://github.com/langchain-ai/langchain-aws) (`ChatBedrockConverse`) · Amazon Bedrock (Claude Haiku 4.5) · AWS Bedrock AgentCore (Runtime, Gateway, en cours de déploiement)
+Python · [LangGraph](https://github.com/langchain-ai/langgraph) (orchestration, state, interrupt/resume) · [langchain-aws](https://github.com/langchain-ai/langchain-aws) (`ChatBedrockConverse`) · Amazon Bedrock (Claude Haiku 4.5) · AWS Bedrock AgentCore (Runtime, Gateway, deployment in progress)
 
-## Statut
+## Status
 
-- **Phase 0** : graphe LangGraph local, routage conditionnel et interruption humaine validés sur 5 cas de test (conforme, fournisseur non référencé, écart quantité/prix, doublon, montant au-dessus du seuil). ✅
-- **Phase 1** : déploiement AgentCore, remplacement du checkpointer en mémoire par une persistance durable, puis packaging pour AgentCore Runtime. En cours.
-- **Phase 2** : Observability & Evaluations natifs d'AgentCore, plutôt qu'une table de traces et une suite d'évaluation maison.
-- **Phase 3** : à définir selon ce qui manque après les trois premières phases.
+- **Phase 0**: local LangGraph graph, conditional routing and human interruption validated on 5 test cases (compliant, unlisted supplier, quantity/price discrepancy, duplicate, amount above threshold). ✅
+- **Phase 1**: AgentCore deployment, replacing the in-memory checkpointer with durable persistence, then packaging for AgentCore Runtime. In progress.
+- **Phase 2**: AgentCore's native Observability & Evaluations, instead of a homemade traces table and eval suite.
+- **Phase 3**: to be defined based on what's still missing after the first three phases.
 
-Suite de [novasupply-agent](https://github.com/UlysseLeb/novasupply-agent), où l'agent décidait seul (pas d'étape de validation humaine) sur une stack AWS différente (Strands, Lambda, CDK).
+Follow-up to [novasupply-agent](https://github.com/UlysseLeb/novasupply-agent), where the agent decided on its own (no human validation step) on a different AWS stack (Strands, Lambda, CDK).
