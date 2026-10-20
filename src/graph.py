@@ -77,7 +77,7 @@ class FactureExtraite(BaseModel):
 
 class EvaluationRisque(BaseModel):
     risque: Literal["faible", "eleve"]
-    justification: str = Field(description="Explication courte de la décision, en français")
+    justification: str = Field(description="Short explanation of the decision, in English")
 
 
 # --- État du graphe ---
@@ -129,47 +129,47 @@ def validate_po(state: InvoiceState) -> dict:
 
     if extraction.numero_bon_commande in FACTURES_DEJA_TRAITEES:
         ecarts.append(
-            f"Facture en double : le bon de commande {extraction.numero_bon_commande} "
-            "a déjà fait l'objet d'une facture traitée."
+            f"Duplicate invoice: purchase order {extraction.numero_bon_commande} "
+            "has already been invoiced and processed."
         )
 
     bon = BONS_DE_COMMANDE.get(extraction.numero_bon_commande)
     if bon is None:
-        ecarts.append(f"Bon de commande {extraction.numero_bon_commande} introuvable dans l'ERP.")
+        ecarts.append(f"Purchase order {extraction.numero_bon_commande} not found in the ERP.")
         return {"ecarts": ecarts}
 
     fournisseurs_ok = FOURNISSEURS_REFERENCES.get(extraction.restaurant, set())
     if extraction.fournisseur not in fournisseurs_ok:
         ecarts.append(
-            f"Fournisseur '{extraction.fournisseur}' non référencé pour {extraction.restaurant}."
+            f"Supplier '{extraction.fournisseur}' is not on file for {extraction.restaurant}."
         )
     elif extraction.fournisseur != bon["fournisseur"]:
         ecarts.append(
-            f"Le bon de commande {extraction.numero_bon_commande} a été émis pour "
-            f"'{bon['fournisseur']}', pas pour '{extraction.fournisseur}'."
+            f"Purchase order {extraction.numero_bon_commande} was issued for "
+            f"'{bon['fournisseur']}', not for '{extraction.fournisseur}'."
         )
 
     lignes_bon = {ligne["produit"]: ligne for ligne in bon["lignes"]}
     for ligne in extraction.lignes:
         ligne_bon = lignes_bon.get(ligne.produit)
         if ligne_bon is None:
-            ecarts.append(f"Produit '{ligne.produit}' absent du bon de commande.")
+            ecarts.append(f"Product '{ligne.produit}' is not on the purchase order.")
             continue
         if abs(ligne.quantite - ligne_bon["quantite"]) / ligne_bon["quantite"] > 0.10:
             ecarts.append(
-                f"Écart de quantité sur '{ligne.produit}' : {ligne.quantite} {ligne.unite} "
-                f"facturés vs {ligne_bon['quantite']} {ligne_bon['unite']} commandés."
+                f"Quantity discrepancy on '{ligne.produit}': {ligne.quantite} {ligne.unite} "
+                f"invoiced vs {ligne_bon['quantite']} {ligne_bon['unite']} ordered."
             )
         if abs(ligne.prix_unitaire - ligne_bon["prix_unitaire"]) / ligne_bon["prix_unitaire"] > 0.15:
             ecarts.append(
-                f"Écart de prix sur '{ligne.produit}' : {ligne.prix_unitaire}€/{ligne.unite} "
-                f"facturé vs {ligne_bon['prix_unitaire']}€/{ligne.unite} au bon de commande."
+                f"Price discrepancy on '{ligne.produit}': €{ligne.prix_unitaire}/{ligne.unite} "
+                f"invoiced vs €{ligne_bon['prix_unitaire']}/{ligne.unite} on the purchase order."
             )
 
     if extraction.montant_total > SEUIL_MONTANT_ELEVE:
         ecarts.append(
-            f"Montant total ({extraction.montant_total}€) au-dessus du seuil de "
-            f"{SEUIL_MONTANT_ELEVE}€."
+            f"Total amount (€{extraction.montant_total}) above the threshold of "
+            f"€{SEUIL_MONTANT_ELEVE}."
         )
 
     return {"ecarts": ecarts}
@@ -180,18 +180,18 @@ def score_risk(state: InvoiceState) -> dict:
     ecarts = state["ecarts"]
 
     if not ecarts:
-        return {"risque": "faible", "justification_risque": "Aucun écart détecté avec le bon de commande."}
+        return {"risque": "faible", "justification_risque": "No discrepancy found against the purchase order."}
 
     llm = model.with_structured_output(EvaluationRisque)
     evaluation: EvaluationRisque = llm.invoke(
-        "Tu évalues le risque d'une facture fournisseur pour une chaîne de restaurants avant paiement. "
-        "Les écarts de prix sur les produits frais peuvent être légitimes (saisonnalité, cours des "
-        "matières premières) : un léger écart de prix seul n'est pas forcément un risque élevé. "
-        "En revanche, un fournisseur non référencé, un écart de quantité important, une facture en "
-        "double, ou un montant très supérieur au seuil habituel sont des signaux sérieux.\n\n"
-        f"Facture de {extraction.fournisseur} pour {extraction.restaurant}, "
-        f"montant total {extraction.montant_total}€.\n"
-        f"Écarts détectés :\n" + "\n".join(f"- {e}" for e in ecarts)
+        "You assess the risk of a supplier invoice for a restaurant chain before payment. "
+        "Price discrepancies on fresh products can be legitimate (seasonality, raw material "
+        "prices): a small price discrepancy alone is not necessarily high risk. On the other "
+        "hand, an unlisted supplier, a large quantity discrepancy, a duplicate invoice, or an "
+        "amount far above the usual threshold are serious signals.\n\n"
+        f"Invoice from {extraction.fournisseur} for {extraction.restaurant}, "
+        f"total amount €{extraction.montant_total}.\n"
+        f"Discrepancies detected:\n" + "\n".join(f"- {e}" for e in ecarts)
     )
     return {"risque": evaluation.risque, "justification_risque": evaluation.justification}
 

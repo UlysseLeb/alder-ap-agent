@@ -58,7 +58,7 @@ Every invoice processed by `notify` appends one line to `audit_log.jsonl`, appen
 
 ```json
 {
-  "timestamp": "2026-10-20T05:14:23.735811+00:00",
+  "timestamp": "2026-10-20T05:36:24.649643+00:00",
   "po_number": "BC-2026-0920",
   "supplier": "Primeur Rhône",
   "restaurant": "Alder Kitchens - Lyon Part-Dieu",
@@ -68,14 +68,14 @@ Every invoice processed by `notify` appends one line to `audit_log.jsonl`, appen
     "Price discrepancy on 'Tomates grappe': €4.8/kg invoiced vs €3.2/kg on the purchase order."
   ],
   "risk": "high",
-  "risk_rationale": "Significant quantity discrepancy (50% surplus: 45 kg vs 30 kg ordered) combined with a 50% price increase (€4.8/kg vs €3.2/kg). While price discrepancies alone can be legitimate, a large quantity discrepancy combined with a high price discrepancy on the same product is a serious signal that warrants a check before payment.",
+  "risk_rationale": "The invoice shows a significant quantity discrepancy (45 kg invoiced vs 30 kg ordered, representing a 50% overcharge) combined with a substantial price increase (€4.8/kg vs €3.2/kg, a 50% markup). While individual price variations on fresh products can be legitimate due to seasonality, the combination of both a large quantity discrepancy AND a significant price increase on the same item signals potential billing error or fraud. The total overcharge on this line alone is approximately €108, which is substantial relative to the €247.5 invoice total. This warrants investigation before payment.",
   "final_decision": "approved by human validation",
   "human_comment": "Price increase confirmed by the supplier (tomato shortage), extra quantity needed for the weekend event.",
-  "pennylane_invoice_id": 2
+  "pennylane_invoice_id": 9
 }
 ```
 
-Field names are translated here for readability; the actual file is written in French, like the rest of the codebase's comments and docstrings.
+Field names are translated here for readability. `discrepancies` and `risk_rationale` are written directly in English by the code and the model respectively; `final_decision` and `human_comment` still reflect the test harness's own wording, same as the rest of the codebase's comments and docstrings.
 
 ## Stack
 
