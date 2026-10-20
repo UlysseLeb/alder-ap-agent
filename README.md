@@ -2,6 +2,10 @@
 
 An agent that validates a restaurant chain's supplier invoices before payment, and pauses to ask for human approval on risky cases, instead of either auto-approving everything or sending every invoice through full manual review.
 
+
+https://github.com/user-attachments/assets/8aa04ec3-f86d-4c39-95e6-81b896f7b581
+
+
 ## The problem
 
 **Alder Kitchens**, a restaurant chain, receives weekly invoices from its food suppliers (meat, fish, vegetables, drinks) to check against a purchase order before payment. Two naive approaches fail:
