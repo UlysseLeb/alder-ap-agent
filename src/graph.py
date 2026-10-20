@@ -10,6 +10,10 @@ des prix à un bon de commande est un calcul exact, pas un jugement, donc pas d�
 
 from typing import Literal, Optional, TypedDict
 
+from dotenv import load_dotenv
+
+load_dotenv()  # charge LANGSMITH_TRACING / LANGSMITH_API_KEY / LANGSMITH_PROJECT depuis .env — tracing automatique, aucun autre code à toucher
+
 from langchain_aws import ChatBedrockConverse
 from langchain_core.messages import HumanMessage
 import sqlite3
